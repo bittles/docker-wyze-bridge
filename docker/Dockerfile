@@ -22,6 +22,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY /app/ /build/app/
 
+COPY /ffmpeg-n6.1.3-linuxarm64-gpl-6.1.tar.xz /build/ffmpeg.tar.xz
+
 RUN chmod +x /build/app/run
 
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -39,9 +41,10 @@ RUN set -eux; \
     cd /build; \
     . app/.env; \
     mkdir -p tokens; \
-    curl -fsSL https://github.com/homebridge/ffmpeg-for-homebridge/releases/latest/download/ffmpeg-alpine-${FFMPEG_ARCH}.tar.gz -o ffmpeg.tar.gz; \
-    tar tzf ffmpeg.tar.gz || (echo "Invalid ffmpeg tarball for ${FFMPEG_ARCH}" && exit 1); \
-    tar xzf ffmpeg.tar.gz -C . ;\
+#    curl -fsSL https://github.com/homebridge/ffmpeg-for-homebridge/releases/latest/download/ffmpeg-alpine-${FFMPEG_ARCH}.tar.gz -o ffmpeg.tar.gz; \
+#    tar tzf ffmpeg.tar.gz || (echo "Invalid ffmpeg tarball for ${FFMPEG_ARCH}" && exit 1); \
+#    tar xzf ffmpeg.tar.gz -C . ;\
+    tar -Jxf ffmpeg.tar.xz --strip-components=1 -C usr/local --wildcards '*ffmpeg'; \
     rm ffmpeg.tar.gz; \
     curl -fsSL https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz -o mediamtx.tar.gz; \
     tar tzf mediamtx.tar.gz || (echo "Invalid mediamtx tarball for ${MTX_ARCH}" && exit 1); \
