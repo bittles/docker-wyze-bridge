@@ -477,12 +477,16 @@ class WyzeIOTCSession:
         gap = time.time() - self.frame_ts
 
         if gap > 5:
-            logger.info(f"[IOTC]] video super slow {gap=}")
+            # increase log level for now
+            warnings.warn(f"[IOTC]] video super slow {gap=}")
             self.clear_buffer()
         if gap > 1:
-            logger.debug(f"[IOTC] video slow {gap=}")
+            # increase log level for now
+            warnings.warn(f"[IOTC] video slow {gap=}")
             self.flush_pipe("audio", gap)
         if gap > 0:
+            # increase log level for now
+            warnings.warn(f"[IOTC] Video behind, adding {gap=} to {self._sleep_buffer=}")
             self._sleep_buffer += gap
 
     def _handle_frame_error(self, err_no: int) -> None:
@@ -565,17 +569,22 @@ class WyzeIOTCSession:
 
         fifo = f"/tmp/{self.pipe_name}_{pipe_type}.pipe"
         size = (round(abs(gap)) * 320) if gap else 7680
-
-        try:
-            fd = os.open(fifo, os.O_RDWR)
-            os.set_blocking(fd, False)
-            with os.fdopen(fd, "rb", buffering=0) as pipe:
-                while data_read := pipe.read(size):
-                    logger.debug(f"[IOTC] Flushed {len(data_read)} from {pipe_type} pipe")
-                    if gap:
-                        break
-        except Exception as ex:
-            logger.warning(f"[IOTC] Flushing Error: [{type(ex).__name__}] {ex}")
+        logger.debug(f"[IOTC] in flush process {size=}")
+        if size == 320:
+            self.clear_buffer()
+        elif size == 640:
+            self.clear_buffer()
+        else:
+            try:
+                fd = os.open(fifo, os.O_RDWR)
+                os.set_blocking(fd, False)
+                with os.fdopen(fd, "rb", buffering=0) as pipe:
+                    while data_read := pipe.read(size):
+                        logger.debug(f"[IOTC] Flushed {len(data_read)} from {pipe_type} pipe")
+                        if gap:
+                            break
+            except Exception as ex:
+                logger.warning(f"[IOTC] Flushing Error: [{type(ex).__name__}] {ex}")
 
     def recv_audio_data(self) -> Iterator[bytes]:
         assert self.av_chan_id is not None, "Please call _connect() before calling recv_audio_data()!"
@@ -598,7 +607,7 @@ class WyzeIOTCSession:
             logger.warning(f"[IOTC] Error: [{type(ex).__name__}] {ex}")
         finally:
             self.state = WyzeIOTCSessionState.CONNECTING_FAILED
-            logger.debug("[IOTC] Audio stream ended")
+            logger.warn("[IOTC] Audio stream ended")
 
     def recv_audio_pipe(self) -> None:
         """Write raw audio frames to a named pipe."""
@@ -621,7 +630,7 @@ class WyzeIOTCSession:
             self.audio_pipe_ready = False
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(fifo_path)
-            logger.debug("[IOTC] Audio pipe closed")
+            logger.warn("[IOTC] Audio pipe closed")
 
     def _sync_audio_frame(self, frame_info):
         # Some cams can't sync
@@ -631,17 +640,25 @@ class WyzeIOTCSession:
         gap = float(f"{frame_info.timestamp}.{frame_info.timestamp_ms}") - self.frame_ts
 
         if abs(gap) > 5:
-            logger.debug(f"[IOTC] Audio out of sync {gap=}")
+            logger.debug(f"[IOTC] Audio out of sync by > 5 ms, clearing buffer {gap=}")
             self.clear_buffer()
 
         if gap < -1:
-            logger.debug(f"[IOTC] Audio behind video.. {gap=}")
-            self.flush_pipe("audio", gap)
+            # seems to fix cam v4 audio issues
+            logger.debug(f"[IOTC] Audio ahead by > 1 ms, clearing buffer.. {gap=}")
+            self.clear_buffer()
+            # self.flush_pipe("audio", gap)
 
         if gap > 0:
+            logger.debug(f"[IOTC] Audio behind, adding gap to sleep buffer.. {gap=}")
             self._sleep_buffer += gap
+            max_sleep_buffer = 5
+            if self._sleep_buffer > max_sleep_buffer:
+                logger.debug(f"[IOTC] {self._sleep_buffer=} exceeding {max_sleep_buffer=}, resetting to double {gap=}")
+                self._sleep_buffer = gap * 2
+
         if gap > 1:
-            logger.debug(f"[ITOC] Audio ahead of video.. {gap=}")
+            logger.debug(f"[IOTC] Audio behind by > 1 ms, sleeping half of {gap=}")
             time.sleep(gap / 2)
 
     def get_audio_sample_rate(self) -> int:
