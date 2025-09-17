@@ -478,15 +478,15 @@ class WyzeIOTCSession:
 
         if gap > 5:
             # increase log level for now
-            warnings.warn(f"[IOTC]] video super slow {gap=}")
+            warnings.warn(f"[IOTC]] video super slow, clearing buffer {gap=}")
             self.clear_buffer()
         if gap > 1:
             # increase log level for now
-            warnings.warn(f"[IOTC] video slow {gap=}")
+            warnings.warn(f"[IOTC] video slow, flushing pipe {gap=}")
             self.flush_pipe("audio", gap)
         if gap > 0:
-            # increase log level for now
-            warnings.warn(f"[IOTC] Video behind, adding {gap=} to {self._sleep_buffer=}")
+            logger.debug(f"[IOTC] Video behind, adding {gap=} to {self._sleep_buffer=}")
+            # after running for 12 hours this sleep buffer was at 24,000 (24 secs), hadn't experimented with capping this as other changes plus using LLHS has fixed my v4 issues
             self._sleep_buffer += gap
 
     def _handle_frame_error(self, err_no: int) -> None:
@@ -569,6 +569,7 @@ class WyzeIOTCSession:
 
         fifo = f"/tmp/{self.pipe_name}_{pipe_type}.pipe"
         size = (round(abs(gap)) * 320) if gap else 7680
+        # audio seems to drop on v4 around when flush pipe gets called multiple times in a row with rounded gap to 1 and 2 (making size 320 and 640), this alone did not fix audio dropping though
         logger.debug(f"[IOTC] in flush process {size=}")
         if size == 320:
             self.clear_buffer()
@@ -644,7 +645,7 @@ class WyzeIOTCSession:
             self.clear_buffer()
 
         if gap < -1:
-            # seems to fix cam v4 audio issues
+            # seems to fix cam v4 audio cutting out
             logger.debug(f"[IOTC] Audio ahead by > 1 ms, clearing buffer.. {gap=}")
             self.clear_buffer()
             # self.flush_pipe("audio", gap)
@@ -652,6 +653,7 @@ class WyzeIOTCSession:
         if gap > 0:
             logger.debug(f"[IOTC] Audio behind, adding gap to sleep buffer.. {gap=}")
             self._sleep_buffer += gap
+            # this sleep buffer accumulates to pretty high numbers, this seems to help audio lagging behind video significantly, capping sleep buffer over in sync video frame along with this may be the fix for audio lag
             max_sleep_buffer = 5
             if self._sleep_buffer > max_sleep_buffer:
                 logger.debug(f"[IOTC] {self._sleep_buffer=} exceeding {max_sleep_buffer=}, resetting to double {gap=}")
